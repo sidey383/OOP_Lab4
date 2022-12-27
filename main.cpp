@@ -33,7 +33,7 @@ int main() {
     std::ifstream file("table.csv");
     CSVParser<int, int, int> parser(file);
     for (auto t : parser) {
-        std::cout<<t;
+        std::cout<<t<<std::endl;
     }
     return 0;
 }

@@ -1,62 +1,47 @@
 #pragma once
+
 #include <fstream>
 #include <tuple>
 #include <iostream>
-#include <tuple>
+#include <vector>
+#include <string>
 
-#define BUF_SIZE 4096
-
-static bool readNext(std::ifstream &file, char *buffer, unsigned int *pose) {
-    (*pose) = 0;
-    file.read(buffer, BUF_SIZE);
-    return file.peek() == EOF;
-}
-
-static int readInt(std::ifstream &file, char *buffer, unsigned int *pose, bool* isEnd) {
-    int i = 0;
-    while(buffer[*pose] != ',') {
-        if (buffer[*pose] == '\n') {
-            (*isEnd) = true;
-            break;
-        }
-        if (std::isdigit(buffer[*pose])) {
-            i += i*10 + buffer[*pose] - '0';
-        }
-        if(*pose + 1 == BUF_SIZE) {
-            if (readNext(file, buffer, pose)) {
-                (*isEnd) = true;
-                break;
-            }
-        }
-    }
-    return i;
-}
-
-template<int N, typename A, typename ... Types>
+template<int N, typename Tuple, typename A, typename ... Types>
 class CSVParserRead {
 public:
 
-    static std::tuple<A, Types...> readLine(std::ifstream &file, char *buffer, unsigned int *pose, bool* isEnd) {
-        if(std::is_same<A, int>::value) {
-            if((*isEnd)) {
-                return std::tuple<A, Types...>(0 , CSVParserRead<N-1, Types...>::readLine(file, buffer, pose, isEnd));
+    static void readLine(std::vector<std::string>& data, Tuple& tuple) {
+        if (std::is_same<A, int>::value) {
+            if (N <= data.size()) {
+                try {
+                    std::get<N - 1>(tuple) = std::stoi(data[N - 1]);
+                } catch (std::invalid_argument& e) {
+                    std::get<N - 1>(tuple) = 0;
+                }
+            } else {
+                std::get<N - 1>(tuple) = 0;
             }
-            return std::tuple<A, Types...>(readInt(file, buffer, pose, isEnd) , CSVParserRead<N-1, Types...>::readLine(file, buffer, pose, isEnd));
         }
+        CSVParserRead<N - 1, Tuple, Types...>::readLine(data, tuple);
     }
 
 };
 
-template<typename A, typename ... Types>
-class CSVParserRead<1, A, Types...> {
+template<typename Tuple, typename A, typename ... Types>
+class CSVParserRead<1, Tuple, A, Types...> {
 public:
 
-    static std::tuple<A, Types...> readLine(std::ifstream &file, char *buffer, unsigned int *pose, bool* isEnd) {
-        if(std::is_same<A, int>::value) {
-            if((*isEnd)) {
-                return std::tuple<A, Types...>(0);
+    static void readLine(std::vector<std::string>& data, Tuple& tuple) {
+        if (std::is_same<A, int>::value) {
+            if (data.empty()) {
+                std::get<0>(tuple) = 0;
+            } else {
+                try {
+                    std::get<0>(tuple) = std::stoi(data[0]);
+                } catch (std::invalid_argument& e) {
+                    std::get<0>(tuple) = 0;
+                }
             }
-            return std::tuple<std::string, A, Types...>(readInt(file, buffer, pose, isEnd));
         }
     }
 
@@ -64,15 +49,14 @@ public:
 
 template<typename A, typename ... Types>
 class CSVParser {
-    std::ifstream& file;
-    char buffer[BUF_SIZE];
-    unsigned int pose;
+    std::ifstream &file;
 public:
     class iterator;
+
     friend class iterator;
 
-    explicit CSVParser(std::ifstream& file) : file(file) {
-        if(!file.is_open()) {
+    explicit CSVParser(std::ifstream &file) : file(file) {
+        if (!file.is_open()) {
             throw std::invalid_argument("Closed file");
         }
     }
@@ -86,13 +70,65 @@ public:
     }
 
     bool isEnd() {
-        return file.peek() == EOF;
+        return file.eof();
     }
 
     std::tuple<A, Types...> readLine(void) {
-        bool isEnd[1];
-        isEnd[0] = file.peek() == EOF;
-        return CSVParserRead<sizeof...(Types), A, Types...>::readLine(file, buffer, &pose, isEnd);
+        std::vector<std::string> strings;
+        char ch;
+        int i = 0;
+        while (!file.get(ch).eof()) {
+            strings.emplace_back("");
+            bool isSeparated = ch == '"';
+            bool hasFirstEnd = false;
+            if (isSeparated) {
+                if (file.get(ch).eof()) {
+                    break;
+                }
+            }
+            do {
+                if (ch == '"') {
+                    if (isSeparated) {
+                        if (hasFirstEnd) {
+                            hasFirstEnd = false;
+                            strings[i] += ch;
+                            continue;
+                        } else {
+                            hasFirstEnd = true;
+                            continue;
+                        }
+                    } else {
+                        strings[i]+=ch;
+                    }
+                    continue;
+                } else {
+                    if (hasFirstEnd)
+                        break;
+                }
+
+                if (ch == ',') {
+                    if (isSeparated) {
+                        strings[i] += ch;
+                    } else {
+                        break;
+                    }
+                }
+                if (ch == '\n') {
+                    if (isSeparated) {
+                        strings[i] += ch;
+                    } else {
+                        break;
+                    }
+                }
+                strings[i] += ch;
+            } while (!file.get(ch).eof());
+            i++;
+            if (ch == '\n')
+                break;
+        }
+        std::tuple<A, Types...> t;
+        CSVParserRead<sizeof...(Types) + 1, std::tuple<A, Types...>, A, Types...>::readLine(strings, t);
+        return t;
     }
 
     class iterator {
@@ -100,27 +136,28 @@ public:
         friend CSVParser<A, Types...>;
 
         bool isEnd = false;
-        CSVParser& parser;
+        CSVParser &parser;
         std::tuple<A, Types...> value;
     public:
 
-        explicit iterator(CSVParser<A, Types...>& parser, bool isEnd) : parser(parser), isEnd(isEnd) {
+        explicit iterator(CSVParser<A, Types...> &parser, bool isEnd) : parser(parser), isEnd(isEnd) {
             this->isEnd |= parser.isEnd();
+            ++(*this);
         }
 
         bool operator==(CSVParser<A, Types...>::iterator const &it) {
-            if(it.isEnd == isEnd && &(it.parser) == &(this->parser))
+            if (it.isEnd == isEnd && &(it.parser) == &(this->parser))
                 return true;
             return false;
         }
 
-        bool operator!= (CSVParser<A, Types...>::iterator const &it) {
-            if(it.isEnd == isEnd && &(it.parser) == &(this->parser))
+        bool operator!=(CSVParser<A, Types...>::iterator const &it) {
+            if (it.isEnd == isEnd && &(it.parser) == &(this->parser))
                 return false;
             return true;
         }
 
-        iterator& operator++ () {
+        iterator &operator++() {
             if (isEnd)
                 return *this;
             if (parser.isEnd())
@@ -129,7 +166,7 @@ public:
             return *this;
         }
 
-        std::tuple<A, Types...> operator* () {
+        std::tuple<A, Types...> operator*() {
             return value;
         }
     };
