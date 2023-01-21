@@ -13,7 +13,7 @@ struct TuplePrinter {
         return TuplePrinter<N - 1, Args...>::printTuple(os, std::get<N-1>(t), t) << val << " ";
     }
     static std::ostream &printTuple(std::ostream &os, std::string val, std::tuple<Args...> t) {
-        return TuplePrinter<N - 1, Args...>::printTuple(os, std::get<N-1>(t), t) << "\"" << std::get<N-1>(t) << "\" ";
+        return TuplePrinter<N - 1, Args...>::printTuple(os, std::get<N-1>(t), t) << "\"" << val << "\" ";
     }
     static void print(std::ostream &os, std::string str) {
         os<<str;
@@ -26,7 +26,7 @@ struct TuplePrinter<0, Args...> {
         return os << val << " " ;
     }
     static std::ostream &printTuple(std::ostream &os, std::string val, std::tuple<Args...> t) {
-        return os << val << "\" ";
+        return os <<"\"" << val << "\" ";
     }
 };
 

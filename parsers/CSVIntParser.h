@@ -14,7 +14,7 @@ public:
         if (size - N < data.size()) {
             try {
                 val = std::stoi(data[size - N]);
-            } catch (std::invalid_argument &e) {}
+            } catch (...) {}
         }
         std::get<size - N>(tuple) = val;
         CSVParserRead<N-1, size, Tuple, Types...>::readLine(data, tuple);
@@ -31,7 +31,7 @@ public:
         if (!data.empty()) {
             try {
                 val = std::stoi(data[size - 1]);
-            } catch (std::invalid_argument &e) {}
+            } catch (...) {}
         }
         std::get<size-1>(tuple) = val;
     }
